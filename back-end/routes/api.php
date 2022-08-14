@@ -18,4 +18,4 @@ use App\Http\Controllers\RequestController;
 Route::get('/test', [RequestController::class, 'test']);
 Route::get('/fetch', [RequestController::class, 'fetch']);
 Route::get('/open_repos', [RequestController::class, 'allOpenRepos14']);
-Route::get('/paginate', [RequestController::class, 'paginate']);
+Route::get('/reviews', [RequestController::class, 'reviews']);
