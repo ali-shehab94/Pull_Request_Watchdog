@@ -21,7 +21,6 @@ class RequestController extends Controller
 
     public function runWatchdog()
     {   
-        $current_date = Carbon::now()->toDateString();
         $headers = $this->headers;
         $page = 1;        
         //while loop to go through all pages available and break when result is empty
@@ -45,33 +44,32 @@ class RequestController extends Controller
                 foreach ($result as $pull_request)
                 {
                     //number variable will be used in the requested reviews API
-                    $number = $pull_request["number"];
+                    $PR_number = $pull_request["number"];
+                    $PR_date = $pull_request["created_at"];
+                    $PR_ref = $pull_request["head"]["sha"];
+                    dd($PR_ref);
                     //construct a string that is easy to read to be stored in a text file
                     $record = "Title: ". $pull_request["title"]. " | URL: ".$pull_request["url"]. " | PR Number: ". $pull_request["number"]. " | PR ID: ". $pull_request["id"]. " | State: ". $pull_request["state"]. " | Date: ".  $pull_request["created_at"];
-                    //curl setup
-                    $url = env('REVIEWS').$number."/requested_reviewers";
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL, $url);
-                    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                    $result = curl_exec($ch);
-                    $result = json_decode($result);
-                    curl_close($ch);
+                    //check if pull request was created more than 14 days ago
+                    if ($this->checkDate($PR_date))
+                    {
+                        Storage::disk('local')->append('1-old-pull-requests.txt', $record);
+                    }
+                    else {
+                        Storage::disk('local')->append('1-new-pull-requests.txt', $record);
+                    }                    
                     //check if pull request has requested reviews
-                    if ($result->users == true or $result->teams == true)
+                    if ($this->checkReviews($PR_number))
                     {
                         Storage::disk('local')->append('2-review-required-pull-requests.txt', $record); 
                     }
-                    else if ($result->users == false && $result->teams == false)
+                    else
                     {
                         Storage::disk('local')->append('3-no-reviews-requested-pull-requests.txt', $record);
                     }
-                    //check if the open pull request was created more than 14 days ago by subtracting timestamps of current date and pull request date
-                    if ((Carbon::parse($current_date)->timestamp - Carbon::parse($pull_request["created_at"])->timestamp) > 1209600)
+                    if ($this->checkReviewStatus($PR_ref))
                     {
-                        Storage::disk('local')->append('1-old-pull-requests.txt', $record);
-                    }else {
-                        Storage::disk('local')->append('1-new-pull-requests.txt', $record);
+                        Storage::disk('local')->append('4-review-status-success-pull-requests.txt', $record);
                     }
                 }
             //if the result variable is empty we will change page value to 0 which is the condition to quit the while loop
@@ -80,7 +78,42 @@ class RequestController extends Controller
                 $page = 0;
             }
         }
-        
         return "Files stored in storage/app/public";
+    }
+
+    public function checkDate($PR_date)
+    {
+        $current_date = Carbon::now()->toDateString();
+        //check if the open pull request was created more than 14 days ago by subtracting timestamps of current date and pull request date
+        if ((Carbon::parse($current_date)->timestamp - Carbon::parse($PR_date)->timestamp) > 1209600)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    public function checkReviews($PR_number)
+    {
+        $headers = $this->headers;
+        $url = env('REVIEWS').$PR_number."/requested_reviewers";
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $result = curl_exec($ch);
+        $result = json_decode($result);
+        curl_close($ch);
+
+        if ($result->users == false && $result->teams == false)
+        {
+            return false;
+        }
+        else
+        {
+            return true;
+        }
     }
 }
