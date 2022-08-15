@@ -19,6 +19,7 @@ class RequestController extends Controller
     }
 
 
+    //main function that will store data in files
     public function runWatchdog()
     {   
         $headers = $this->headers;
@@ -26,8 +27,8 @@ class RequestController extends Controller
         //while loop to go through all pages available and break when result is empty
         while ($page != 0)
         {
-            $url = env('PULLS').$page;
-            //curl setup
+            //curl setup to fetch all open pull requests one page at a time
+            $url = env('GITHUB_API')."/pulls?state=open&sort=desc&page=".$page;
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -37,7 +38,8 @@ class RequestController extends Controller
             $result = json_decode($result, true);
             //increment page variable to go to next page on next iteration
             $page++;
-            //if the result exists the information is stored and the while loop continues
+
+            //the result variable is a page of open pull requests, if it exists the info is stored and the while loop continues
             if ($result)
             {
                 //loop through the page return by GitHub Pulls API to get needed info of each pull request
@@ -47,9 +49,10 @@ class RequestController extends Controller
                     $PR_number = $pull_request["number"];
                     $PR_date = $pull_request["created_at"];
                     $PR_ref = $pull_request["head"]["sha"];
-                    dd($PR_ref);
+                    
                     //construct a string that is easy to read to be stored in a text file
                     $record = "Title: ". $pull_request["title"]. " | URL: ".$pull_request["url"]. " | PR Number: ". $pull_request["number"]. " | PR ID: ". $pull_request["id"]. " | State: ". $pull_request["state"]. " | Date: ".  $pull_request["created_at"];
+                    
                     //check if pull request was created more than 14 days ago
                     if ($this->checkDate($PR_date))
                     {
@@ -58,7 +61,8 @@ class RequestController extends Controller
                     else {
                         Storage::disk('local')->append('1-new-pull-requests.txt', $record);
                     }                    
-                    //check if pull request has requested reviews
+                    
+                    //check if pull request has required reviews
                     if ($this->checkReviews($PR_number))
                     {
                         Storage::disk('local')->append('2-review-required-pull-requests.txt', $record); 
@@ -67,11 +71,14 @@ class RequestController extends Controller
                     {
                         Storage::disk('local')->append('3-no-reviews-requested-pull-requests.txt', $record);
                     }
+
+                    //check if pull request review status is success
                     if ($this->checkReviewStatus($PR_ref))
                     {
-                        Storage::disk('local')->append('4-review-status-success-pull-requests.txt', $record);
+                        Storage::disk('local')->append('4-review-status-success-pull-requests.txt', $record. " | PR_REF: ". $PR_ref);
                     }
                 }
+
             //if the result variable is empty we will change page value to 0 which is the condition to quit the while loop
             }else
             {
@@ -81,10 +88,13 @@ class RequestController extends Controller
         return "Files stored in storage/app/public";
     }
 
+    //the rest of the functions are condition checkers to help runWatchdog function sort the data in corresponding txt files
+
+    //checks if the open pull request was created more than 14 days ago
     public function checkDate($PR_date)
     {
         $current_date = Carbon::now()->toDateString();
-        //check if the open pull request was created more than 14 days ago by subtracting timestamps of current date and pull request date
+        //check if the pull request date matches the condition by subtracting timestamps of current date and pull request date
         if ((Carbon::parse($current_date)->timestamp - Carbon::parse($PR_date)->timestamp) > 1209600)
         {
             return true;
@@ -95,10 +105,11 @@ class RequestController extends Controller
         }
     }
 
+    //checks if the open pull request has required reviews or no
     public function checkReviews($PR_number)
     {
         $headers = $this->headers;
-        $url = env('REVIEWS').$PR_number."/requested_reviewers";
+        $url = env('GITHUB_API')."/pulls/".$PR_number."/requested_reviewers";
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -114,6 +125,29 @@ class RequestController extends Controller
         else
         {
             return true;
+        }
+    }
+
+    //check for open pull request where review status is 'success'
+    public function checkReviewStatus($PR_ref)
+    {
+        $headers = $this->headers;
+        $url = env('GITHUB_API')."/commits/".$PR_ref."/status";
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $result = curl_exec($ch);
+        $result = json_decode($result);
+        curl_close($ch);
+
+        if ($result->state == "success")
+        {
+            return true;
+        }
+        else
+        {
+            return false;
         }
     }
 }
