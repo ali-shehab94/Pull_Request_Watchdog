@@ -15,7 +15,6 @@ use App\Http\Controllers\RequestController;
 |
 */
 
-Route::get('/test', [RequestController::class, 'test']);
-Route::get('/fetch', [RequestController::class, 'fetch']);
-Route::get('/open_repos', [RequestController::class, 'allOpenRepos14']);
-Route::get('/reviews', [RequestController::class, 'reviews']);
+
+Route::get('/watchdog', [RequestController::class, 'runWatchdog']);
+

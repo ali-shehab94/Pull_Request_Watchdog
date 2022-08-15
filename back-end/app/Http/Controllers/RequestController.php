@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 
 class RequestController extends Controller
 {
+    //Global values including personal access token and headers
     public function __construct()
     {
         $github_token = env('GITHUB_TOKEN');
@@ -17,18 +18,17 @@ class RequestController extends Controller
         ];
     }
 
-    public function allOpenRepos14()
+
+    public function runWatchdog()
     {   
         $current_date = Carbon::now()->toDateString();
-        $past_date = "2021-10-09";
-        $interval = abs(Carbon::parse($current_date)->timestamp - Carbon::parse($past_date)->timestamp);
         $headers = $this->headers;
-        // $url="https://api.github.com/repos/woocommerce/woocommerce/pulls?state=open&created=<$date&per_page=3";
-        $x = 1;
-        $PR_number = [];
-        while ($x != 0)
+        $page = 1;        
+        //while loop to go through all pages available and break when result is empty
+        while ($page != 0)
         {
-            $url = "https://api.github.com/repos/woocommerce/woocommerce/pulls?state=open&page=$x&sort=desc";
+            $url = env('PULLS').$page;
+            //curl setup
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -36,14 +36,20 @@ class RequestController extends Controller
             $result = curl_exec($ch);
             curl_close($ch);
             $result = json_decode($result, true);
-            $x++;
+            //increment page variable to go to next page on next iteration
+            $page++;
+            //if the result exists the information is stored and the while loop continues
             if ($result)
             {
+                //loop through the page return by GitHub Pulls API to get needed info of each pull request
                 foreach ($result as $pull_request)
                 {
+                    //number variable will be used in the requested reviews API
                     $number = $pull_request["number"];
+                    //construct a string that is easy to read to be stored in a text file
                     $record = "Title: ". $pull_request["title"]. " | URL: ".$pull_request["url"]. " | PR Number: ". $pull_request["number"]. " | PR ID: ". $pull_request["id"]. " | State: ". $pull_request["state"]. " | Date: ".  $pull_request["created_at"];
-                    $url = "https://api.github.com/repos/woocommerce/woocommerce/pulls/$number/requested_reviewers";
+                    //curl setup
+                    $url = env('REVIEWS').$number."/requested_reviewers";
                     $ch = curl_init();
                     curl_setopt($ch, CURLOPT_URL, $url);
                     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -51,93 +57,30 @@ class RequestController extends Controller
                     $result = curl_exec($ch);
                     $result = json_decode($result);
                     curl_close($ch);
-                    // dd($result->users == true);
+                    //check if pull request has requested reviews
                     if ($result->users == true or $result->teams == true)
                     {
                         Storage::disk('local')->append('2-review-required-pull-requests.txt', $record); 
-                    }else if ($result->users == false && $result->teams == false)
+                    }
+                    else if ($result->users == false && $result->teams == false)
                     {
                         Storage::disk('local')->append('3-no-reviews-requested-pull-requests.txt', $record);
                     }
+                    //check if the open pull request was created more than 14 days ago by subtracting timestamps of current date and pull request date
                     if ((Carbon::parse($current_date)->timestamp - Carbon::parse($pull_request["created_at"])->timestamp) > 1209600)
                     {
-                        // array_push($myArray, $record);
                         Storage::disk('local')->append('1-old-pull-requests.txt', $record);
                     }else {
                         Storage::disk('local')->append('1-new-pull-requests.txt', $record);
                     }
                 }
-               
+            //if the result variable is empty we will change page value to 0 which is the condition to quit the while loop
             }else
             {
-                $x = 0;
+                $page = 0;
             }
         }
         
-        return "done";
-
+        return "Files stored in storage/app/public";
     }
-
-    public function reviews($PR_numbers)
-    {   
-        foreach ($PR_numbers as $number)
-        {
-            $url = "https://api.github.com/repos/woocommerce/woocommerce/pulls/$number/reviews";
-            $headers = $this->headers;
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            $result = curl_exec($ch);
-            curl_close($ch);
-            foreach ($result as $review)
-                {
-                    $record = "Title: ". $pull_request["title"]. " | URL: ".$pull_request["url"]. " | PR Number: ". $pull_request["number"]. " | PR ID: ". $pull_request["id"]. " | State: ". $pull_request["state"]. " | Date: ".  $pull_request["created_at"];
-                    array_push($PR_number, $pull_request["number"]);
-                    if ((Carbon::parse($current_date)->timestamp - Carbon::parse($pull_request["created_at"])->timestamp) > 1209600)
-                    {
-                        // array_push($myArray, $record);
-                        Storage::disk('local')->append('1-old-pull-requests.txt', $record);
-                    }else {
-                        Storage::disk('local')->append('1-new-pull-requests.txt', $record);
-                    }
-                }
-        }
-        return;
-    }
-
-    public function isRequired($review)
-    {
-
-    }
-
-    
-    // public function paginate()
-    // {
-    //     $github_token = env('GITHUB_TOKEN');
-    //     $headers = [
-    //         "User-Agent: ali-shehab94",
-    //         "Accept: application/vnd.github+json",
-    //         "Authorization: token $github_token"
-    //     ];
-    //     // $url="https://api.github.com/repos/woocommerce/woocommerce/pulls?state=open&created=<$date&per_page=2";
-    //     $x = 1;
-
-  
-    //     $url = "https://api.github.com/repos/woocommerce/woocommerce/pulls?state=open&page=$x";
-    //     $ch = curl_init();
-    //     curl_setopt($ch, CURLOPT_URL, $url);
-    //     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    //     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    //     $result = curl_exec($ch);
-    //     curl_close($ch);
-    //     $result = json_decode($result, true);
-        
-    //     return $result;
-    // }
-    //a day is 86400 seconds
-    //14 days is 1,209,600
 }
-
-
-// &per_page=all&page=3
