@@ -43,15 +43,22 @@ class RequestController extends Controller
                 {
                     $number = $pull_request["number"];
                     $record = "Title: ". $pull_request["title"]. " | URL: ".$pull_request["url"]. " | PR Number: ". $pull_request["number"]. " | PR ID: ". $pull_request["id"]. " | State: ". $pull_request["state"]. " | Date: ".  $pull_request["created_at"];
-                    $url = "https://api.github.com/repos/woocommerce/woocommerce/pulls/$number/reviews";
+                    $url = "https://api.github.com/repos/woocommerce/woocommerce/pulls/$number/requested_reviewers";
                     $ch = curl_init();
                     curl_setopt($ch, CURLOPT_URL, $url);
                     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     $result = curl_exec($ch);
+                    $result = json_decode($result);
                     curl_close($ch);
-                    print_r($result);
-                    // array_push($PR_number, $pull_request["number"]);
+                    // dd($result->users == true);
+                    if ($result->users == true or $result->teams == true)
+                    {
+                        Storage::disk('local')->append('2-review-required-pull-requests.txt', $record); 
+                    }else if ($result->users == false && $result->teams == false)
+                    {
+                        Storage::disk('local')->append('3-no-reviews-requested-pull-requests.txt', $record);
+                    }
                     if ((Carbon::parse($current_date)->timestamp - Carbon::parse($pull_request["created_at"])->timestamp) > 1209600)
                     {
                         // array_push($myArray, $record);
